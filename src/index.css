@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=ZCOOL+XiaoWei&display=swap');
+
+:root {
+  font-family: 'ZCOOL XiaoWei', serif;
+  line-height: 1.6;
+  font-weight: 400;
+  color: #f6ead6;
+  background-color: #120d0b;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-image: radial-gradient(circle at top, rgba(140, 35, 18, 0.45), transparent 55%),
+    radial-gradient(circle at 20% 30%, rgba(225, 190, 120, 0.15), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(58, 40, 28, 0.5), transparent 40%),
+    linear-gradient(135deg, #140e0b, #0d0907);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+textarea {
+  font-family: inherit;
+}
