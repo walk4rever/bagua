@@ -1,73 +1,47 @@
-# React + TypeScript + Vite
+# 来，八卦一下！ 
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+中国传统阴阳八卦风格的起卦应用，模拟铜钱起卦生成本卦与变卦，并展示《周易》卦辞与行动指引。适配移动端，支持子路径部署到 `/bagua/`。让我们一起八卦一下！
 
-Currently, two official plugins are available:
+## 功能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 三次掷钱生成六爻，展示本卦与变爻
+- 自动给出卦象解读与行动建议
+- 阴阳旋转动效后展示结果
+- 移动端优先布局与精简视觉
 
-## React Compiler
+## 在线访问
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+https://air7.fun/bagua
 
-## Expanding the ESLint configuration
+## 开源与商业化
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+本项目当前为开源体验版，未来计划提供更丰富的商业化能力与服务支持。
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 本地开发
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 构建与校验
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
+npm run lint
+npm run preview
 ```
+
+## 部署说明
+
+项目默认基于子路径 `/bagua/` 构建（见 `vite.config.ts`），Nginx 配置见 `nginx.conf`，容器镜像由 `Dockerfile` 构建。
+
+```bash
+docker build -t bagua .
+docker run --rm -p 8080:80 bagua
+```
+
+访问：
+
+- `http://localhost:8080/bagua/`
+- 健康检查：`/health` 与 `/bagua/health`
