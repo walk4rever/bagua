@@ -22,7 +22,10 @@ type HexagramResult = {
   lines: Line[]
   number: number
   entry: HexagramEntry | null
-  advice: string[]
+  changedLines: Line[]
+  changedNumber: number
+  changedEntry: HexagramEntry | null
+  interpretation: string
 }
 
 const entries = zhouyi as HexagramEntry[]
@@ -125,32 +128,104 @@ const buildTrigramKey = (lines: Line[]) => {
   return trigramByBits[bits]
 }
 
-const deriveAdvice = (lines: Line[]) => {
-  const yinCount = lines.filter((line) => line.yin).length
-  const yangCount = lines.length - yinCount
-  const changeCount = lines.filter((line) => line.changing).length
+const deriveHexagram = (lines: Line[]) => {
+  const lower = buildTrigramKey(lines.slice(0, 3))
+  const upper = buildTrigramKey(lines.slice(3, 6))
+  const key = `${upper}_${lower}`
+  const number = hexagramMap[key] ?? 1
+  const entry = entries.find((item) => item.id === number) ?? null
+  return { number, entry }
+}
 
-  const balance =
-    yinCount === yangCount
-      ? '阴阳相济'
-      : yinCount > yangCount
-        ? '阴势偏盛'
-        : '阳势偏盛'
+const buildInterpretationPrompt = (
+  lines: Line[],
+  entry: HexagramEntry | null,
+  changedEntry: HexagramEntry | null
+) => {
+  const topChangingIndex = lines.reduce((acc, line, index) => {
+    return line.changing ? index : acc
+  }, -1)
+  const topChangingText =
+    topChangingIndex >= 0 ? `动爻取最上爻（第 ${topChangingIndex + 1} 爻）` : '无动爻'
+  const baseTitle = entry?.title ?? '本卦'
+  const changedTitle = changedEntry?.title ?? '变卦'
+  return `你是周易卦象解读专家，请从本卦卦象（整体发展）、动爻（变动时机）、变卦卦象（可能结果）三方面来解读用户探寻的事情。请用简体中文输出三段内容，每段3-4句，内容更具体，包含可执行建议与注意事项。\n本卦：${baseTitle}\n动爻：${topChangingText}\n变卦：${changedTitle}`
+}
 
-  const movement =
-    changeCount === 0
-      ? '局势趋于稳定，可守可进'
-      : changeCount <= 2
-        ? '变化初起，宜顺势而行'
-        : changeCount <= 4
-          ? '变化加速，宜稳中求变'
-          : '变动剧烈，宜谨慎收束'
+const parseInterpretation = (text: string) => {
+  const cleanText = text.trim()
+  const parts: Array<{ title: string; content: string }> = []
+  const regex = /\*\*(.+?)\*\*\s*/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null = regex.exec(cleanText)
+  if (!match) {
+    return {
+      items: parts,
+      plain: cleanText.replace(/\*\*(.+?)\*\*/g, '$1'),
+    }
+  }
+  while (match) {
+    const title = match[1].replace(/[:：]\s*$/, '').trim()
+    const contentStart = regex.lastIndex
+    const nextMatch = regex.exec(cleanText)
+    const contentEnd = nextMatch ? nextMatch.index : cleanText.length
+    const rawContent = cleanText.slice(contentStart, contentEnd).trim()
+    const content = rawContent.replace(/\*\*(.+?)\*\*/g, '$1')
+    parts.push({ title, content })
+    lastIndex = contentEnd
+    match = nextMatch
+  }
+  return {
+    items: parts,
+    plain: cleanText.slice(lastIndex).replace(/\*\*(.+?)\*\*/g, '$1').trim(),
+  }
+}
 
-  return [
-    `当前形势呈现“${balance}”之象。`,
-    `变爻数量为 ${changeCount}，${movement}。`,
-    '先明内心所求，再定行动次序，切勿急于求成。',
-  ]
+const requestInterpretation = async (
+  lines: Line[],
+  entry: HexagramEntry | null,
+  changedEntry: HexagramEntry | null
+) => {
+  const prompt = buildInterpretationPrompt(lines, entry, changedEntry)
+  const rawModel = import.meta.env.VITE_DASHSCOPE_MODEL ?? 'qwen-plus'
+  const model = rawModel.startsWith('bailian/') ? rawModel.slice(8) : rawModel
+  const apiUrl = import.meta.env.DEV
+    ? '/api/bailian'
+    : `${import.meta.env.BASE_URL}api/bailian`
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: '你是周易卦象解读专家，保持表达清晰、克制、可执行。',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 2048,
+      stream: false,
+    }),
+  })
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`${response.status} ${errorText}`.trim())
+  }
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  const content = data.choices?.[0]?.message?.content
+  if (!content) {
+    throw new Error('interpretation_empty')
+  }
+  return content
 }
 
 const tossLine = (): Line => {
@@ -172,6 +247,7 @@ function App() {
   const [result, setResult] = useState<HexagramResult | null>(null)
   const [isCasting, setIsCasting] = useState(false)
   const timeoutRef = useRef<number | null>(null)
+  const castIdRef = useRef(0)
 
   const hasResult = Boolean(result?.entry)
 
@@ -182,27 +258,58 @@ function App() {
     }
     setIsCasting(false)
     setResult(null)
+    castIdRef.current += 1
   }
 
-  const handleCast = () => {
+  const handleCast = async () => {
     if (hasResult || isCasting) {
       resetCast()
       return
     }
+    castIdRef.current += 1
+    const castId = castIdRef.current
     const lines = Array.from({ length: 6 }, () => tossLine())
-    const lower = buildTrigramKey(lines.slice(0, 3))
-    const upper = buildTrigramKey(lines.slice(3, 6))
-    const key = `${upper}_${lower}`
-    const number = hexagramMap[key] ?? 1
-    const entry = entries.find((item) => item.id === number) ?? null
-    const advice = deriveAdvice(lines)
-    const nextResult = { lines, number, entry, advice }
+    const changedLines = lines.map((line) =>
+      line.changing
+        ? { ...line, yin: !line.yin, changing: false }
+        : { ...line, changing: false }
+    )
+    const { number, entry } = deriveHexagram(lines)
+    const { number: changedNumber, entry: changedEntry } = deriveHexagram(changedLines)
     setIsCasting(true)
-    timeoutRef.current = window.setTimeout(() => {
-      setResult(nextResult)
-      setIsCasting(false)
-      timeoutRef.current = null
-    }, 3000)
+    const delay = new Promise<void>((resolve) => {
+      timeoutRef.current = window.setTimeout(() => {
+        timeoutRef.current = null
+        resolve()
+      }, 3000)
+    })
+    let interpretation = '解读生成失败，请稍后再试。'
+    try {
+      const [modelResult] = await Promise.all([
+        requestInterpretation(lines, entry, changedEntry),
+        delay,
+      ])
+      interpretation = modelResult
+    } catch (error) {
+      await delay
+      if (error instanceof Error && error.message) {
+        interpretation = `解读生成失败：${error.message}`
+      }
+    }
+    if (castId !== castIdRef.current) {
+      return
+    }
+    const nextResult = {
+      lines,
+      number,
+      entry,
+      changedLines,
+      changedNumber,
+      changedEntry,
+      interpretation,
+    }
+    setResult(nextResult)
+    setIsCasting(false)
   }
 
   const changingLines = useMemo(
@@ -216,6 +323,12 @@ function App() {
   const displayLines = result?.lines
     ? [...result.lines].reverse()
     : Array.from({ length: 6 }, () => null)
+  const displayChangedLines = result?.changedLines
+    ? [...result.changedLines].reverse()
+    : Array.from({ length: 6 }, () => null)
+  const interpretationParts = result?.interpretation
+    ? parseInterpretation(result.interpretation)
+    : { items: [], plain: '' }
 
   return (
     <div className="app">
@@ -264,8 +377,8 @@ function App() {
           <main className="layout">
             <section className="panel result-panel">
               <div className="panel-header">
-                <h2>卦象与解读</h2>
-                <span className="badge">第 {result?.number} 卦</span>
+                <h2>本卦卦象</h2>
+                <span className="badge">{result?.entry?.title ?? '本卦'}</span>
               </div>
 
               <div className="result-body">
@@ -274,7 +387,7 @@ function App() {
                     {displayLines.map((line, index) => {
                       if (!line) return null
                       const y = 6 + index * 18
-                      const fill = line.changing ? '#f0c36a' : '#f3dcb2'
+                      const fill = line.changing ? '#ff6b6b' : '#6aa6ff'
                       if (line.yin) {
                         return (
                           <g key={`svg-${index}`}>
@@ -319,19 +432,6 @@ function App() {
                       </div>
                     ))}
                   </div>
-                  <div className="line-caption">下卦 → 上卦</div>
-                  {changingLines.length > 0 ? (
-                    <div className="changing-lines">
-                      变爻：
-                      {changingLines.map((item) => (
-                        <span key={`change-${item.index}`}>
-                          第 {item.index + 1} 爻
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="changing-lines subtle">无变爻，宜守宜定</div>
-                  )}
                 </div>
 
                 <div className="text-block">
@@ -352,24 +452,6 @@ function App() {
                     </ul>
                   </div>
 
-                  <div className="section">
-                    <h4>象传</h4>
-                    <ul>
-                      {result?.entry?.xiang.map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="section">
-                    <h4>彖传</h4>
-                    <ul>
-                      {result?.entry?.tuan.map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
-
                   {result?.entry?.wenyan.length ? (
                     <div className="section">
                       <h4>文言</h4>
@@ -385,13 +467,109 @@ function App() {
             </section>
           </main>
 
+          {changingLines.length > 0 ? (
+            <section className="panel result-panel">
+              <div className="panel-header">
+                <h2>变卦卦象</h2>
+                <span className="badge">{result?.changedEntry?.title ?? '变卦'}</span>
+              </div>
+
+              <div className="result-body">
+                <div className="hexagram">
+                  <svg className="hexagram-image" viewBox="0 0 160 120" aria-hidden="true">
+                    {displayChangedLines.map((line, index) => {
+                      if (!line) return null
+                      const y = 6 + index * 18
+                      const fill = '#6aa6ff'
+                      if (line.yin) {
+                        return (
+                          <g key={`svg-changed-${index}`}>
+                            <rect x="10" y={y} width="58" height="10" rx="5" fill={fill} />
+                            <rect x="92" y={y} width="58" height="10" rx="5" fill={fill} />
+                          </g>
+                        )
+                      }
+                      return (
+                        <rect
+                          key={`svg-changed-${index}`}
+                          x="10"
+                          y={y}
+                          width="140"
+                          height="10"
+                          rx="5"
+                          fill={fill}
+                        />
+                      )
+                    })}
+                  </svg>
+                  <div className="lines">
+                    {displayChangedLines.map((line, index) => (
+                      <div
+                        key={`line-changed-${index}`}
+                        className={`line ${line ? (line.yin ? 'yin' : 'yang') : 'empty'}`}
+                      >
+                        {line ? (
+                          line.yin ? (
+                            <>
+                              <span />
+                              <span />
+                            </>
+                          ) : (
+                            <span className="full" />
+                          )
+                        ) : (
+                          <span className="full muted" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-block">
+                  <h3>{result?.changedEntry?.title ?? '变卦'}</h3>
+                  <div className="quote">{result?.changedEntry?.guaCi}</div>
+
+                  <div className="section">
+                    <h4>卦辞</h4>
+                    <p>{result?.changedEntry?.guaCi}</p>
+                  </div>
+
+                  <div className="section">
+                    <h4>爻辞</h4>
+                    <ul>
+                      {result?.changedEntry?.yaoCi?.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {result?.changedEntry?.wenyan?.length ? (
+                    <div className="section">
+                      <h4>文言</h4>
+                      <ul>
+                        {result?.changedEntry?.wenyan?.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           <section className="panel guidance-panel">
-            <h2>行动指引</h2>
-            <ul>
-              {result?.advice.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
+            <h2>卦象解读</h2>
+            {interpretationParts.items.length ? (
+              interpretationParts.items.map((item) => (
+                <div className="section" key={item.title}>
+                  <h4>{item.title}</h4>
+                  <p>{item.content}</p>
+                </div>
+              ))
+            ) : (
+              <p>{interpretationParts.plain || result?.interpretation}</p>
+            )}
           </section>
         </>
       ) : null}
