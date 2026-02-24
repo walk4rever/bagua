@@ -184,7 +184,8 @@ const parseInterpretation = (text: string) => {
 const requestInterpretation = async (
   lines: Line[],
   entry: HexagramEntry | null,
-  changedEntry: HexagramEntry | null
+  changedEntry: HexagramEntry | null,
+  onChunk?: (text: string) => void
 ) => {
   const prompt = buildInterpretationPrompt(lines, entry, changedEntry)
   const rawModel = import.meta.env.VITE_DASHSCOPE_MODEL ?? 'qwen-plus'
@@ -211,17 +212,74 @@ const requestInterpretation = async (
       ],
       temperature: 0.7,
       max_tokens: 2048,
-      stream: false,
+      stream: true,
     }),
   })
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`${response.status} ${errorText}`.trim())
   }
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('stream_unavailable')
   }
-  const content = data.choices?.[0]?.message?.content
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  let content = ''
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) {
+      break
+    }
+    buffer += decoder.decode(value, { stream: true })
+    let index = buffer.indexOf('\n')
+    while (index !== -1) {
+      const line = buffer.slice(0, index).trim()
+      buffer = buffer.slice(index + 1)
+      if (line.startsWith('data:')) {
+        const data = line.slice(5).trim()
+        if (data && data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data) as {
+              choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
+            }
+            const delta =
+              parsed.choices?.[0]?.delta?.content ??
+              parsed.choices?.[0]?.message?.content ??
+              ''
+            if (delta) {
+              content += delta
+              onChunk?.(content)
+            }
+          } catch {
+            void 0
+          }
+        }
+      }
+      index = buffer.indexOf('\n')
+    }
+  }
+  const tail = buffer.trim()
+  if (tail.startsWith('data:')) {
+    const data = tail.slice(5).trim()
+    if (data && data !== '[DONE]') {
+      try {
+        const parsed = JSON.parse(data) as {
+          choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
+        }
+        const delta =
+          parsed.choices?.[0]?.delta?.content ??
+          parsed.choices?.[0]?.message?.content ??
+          ''
+        if (delta) {
+          content += delta
+          onChunk?.(content)
+        }
+      } catch {
+        void 0
+      }
+    }
+  }
   if (!content) {
     throw new Error('interpretation_empty')
   }
@@ -283,33 +341,62 @@ function App() {
         resolve()
       }, 3000)
     })
-    let interpretation = '解读生成失败，请稍后再试。'
     try {
-      const [modelResult] = await Promise.all([
-        requestInterpretation(lines, entry, changedEntry),
-        delay,
-      ])
-      interpretation = modelResult
+      let latest = ''
+      const streamPromise = requestInterpretation(
+        lines,
+        entry,
+        changedEntry,
+        (partial) => {
+          latest = partial
+          if (castId === castIdRef.current) {
+            setResult((prev) =>
+              prev ? { ...prev, interpretation: partial } : prev
+            )
+          }
+        }
+      )
+      await delay
+      if (castId !== castIdRef.current) {
+        return
+      }
+      const nextResult = {
+        lines,
+        number,
+        entry,
+        changedLines,
+        changedNumber,
+        changedEntry,
+        interpretation: latest || '解读生成中...',
+      }
+      setResult(nextResult)
+      setIsCasting(false)
+      const finalText = await streamPromise
+      if (castId !== castIdRef.current) {
+        return
+      }
+      setResult((prev) => (prev ? { ...prev, interpretation: finalText } : prev))
     } catch (error) {
       await delay
-      if (error instanceof Error && error.message) {
-        interpretation = `解读生成失败：${error.message}`
+      if (castId !== castIdRef.current) {
+        return
       }
+      const message =
+        error instanceof Error && error.message
+          ? `解读生成失败：${error.message}`
+          : '解读生成失败，请稍后再试。'
+      const nextResult = {
+        lines,
+        number,
+        entry,
+        changedLines,
+        changedNumber,
+        changedEntry,
+        interpretation: message,
+      }
+      setResult(nextResult)
+      setIsCasting(false)
     }
-    if (castId !== castIdRef.current) {
-      return
-    }
-    const nextResult = {
-      lines,
-      number,
-      entry,
-      changedLines,
-      changedNumber,
-      changedEntry,
-      interpretation,
-    }
-    setResult(nextResult)
-    setIsCasting(false)
   }
 
   const changingLines = useMemo(
