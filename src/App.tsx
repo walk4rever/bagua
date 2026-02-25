@@ -138,19 +138,53 @@ const deriveHexagram = (lines: Line[]) => {
   return { number, entry }
 }
 
+const INTERPRETATION_TEMPERATURE = 0.65
+
 const buildInterpretationPrompt = (
   lines: Line[],
   entry: HexagramEntry | null,
   changedEntry: HexagramEntry | null
 ) => {
-  const topChangingIndex = lines.reduce((acc, line, index) => {
-    return line.changing ? index : acc
-  }, -1)
-  const topChangingText =
-    topChangingIndex >= 0 ? `动爻取最上爻（第 ${topChangingIndex + 1} 爻）` : '无动爻'
+  // 收集所有动爻，lines[0]=初爻，lines[5]=上爻
+  const changingYaos = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => line.changing)
+    .map(({ index }) => {
+      const label =
+        index === 0 ? '初爻' : index === 5 ? '上爻' : `第${index + 1}爻`
+      const yaoCiText = entry?.yaoCi[index] ?? ''
+      return `${label}：${yaoCiText}`
+    })
+
+  const changingYaoText = changingYaos.length
+    ? changingYaos.join('\n')
+    : '无动爻（静卦，以本卦卦辞为主）'
+
   const baseTitle = entry?.title ?? '本卦'
   const changedTitle = changedEntry?.title ?? '变卦'
-  return `你是周易卦象解读专家，请从本卦卦象（当前运势）、动爻（变动时机）、变卦卦象（可能结果）三方面来解读用户探寻的事情。请用简体中文输出三段内容，每段3-4句，内容更具体，包含可执行建议与注意事项。\n本卦：${baseTitle}\n动爻：${topChangingText}\n变卦：${changedTitle}`
+
+  return `
+【本卦】${baseTitle}
+卦辞：${entry?.guaCi ?? ''}
+彖辞：${entry?.tuan?.[0] ?? ''}
+
+【动爻】（共 ${changingYaos.length} 爻变动）
+${changingYaoText}
+
+【变卦】${changedTitle}
+卦辞：${changedEntry?.guaCi ?? ''}
+
+请严格按以下 Markdown 格式输出，不要添加额外标题层级：
+
+**本卦解读**
+（2-3句，解读当前形势与核心含义）
+
+**动爻启示**
+（每条动爻一句说明变化时机或行动建议；若无动爻则说明静守之道）
+
+**变卦指引**
+（2-3句，说明事情走向与最终结果建议）
+`.trim()
 }
 
 const parseInterpretation = (text: string) => {
@@ -218,14 +252,15 @@ const requestInterpretation = async (
       messages: [
         {
           role: 'system',
-          content: '你是周易卦象解读专家，保持表达清晰、克制、可执行。',
+          content:
+            '你是精通周易的解读师，擅长将古典卦象转化为现代可执行建议。风格：言简意赅、不迷信、不说废话；直接针对具体卦象内容解读，禁止笼统套话。输出语言：简体中文。',
         },
         {
           role: 'user',
           content: prompt,
         },
       ],
-      temperature: 0.7,
+      temperature: INTERPRETATION_TEMPERATURE,
       max_tokens: 2048,
       stream: true,
     }),
