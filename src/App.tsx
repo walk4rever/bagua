@@ -123,9 +123,9 @@ const hexagramMap = hexagramOrder.reduce<Record<string, number>>((map, key, inde
 
 const buildTrigramKey = (lines: Line[]) => {
   const bits =
-    (lines[0].yin ? 0 : 1) +
+    (lines[2].yin ? 0 : 1) +
     (lines[1].yin ? 0 : 2) +
-    (lines[2].yin ? 0 : 4)
+    (lines[0].yin ? 0 : 4)
   return trigramByBits[bits]
 }
 
@@ -150,7 +150,7 @@ const buildInterpretationPrompt = (
     topChangingIndex >= 0 ? `动爻取最上爻（第 ${topChangingIndex + 1} 爻）` : '无动爻'
   const baseTitle = entry?.title ?? '本卦'
   const changedTitle = changedEntry?.title ?? '变卦'
-  return `你是周易卦象解读专家，请从本卦卦象（整体发展）、动爻（变动时机）、变卦卦象（可能结果）三方面来解读用户探寻的事情。请用简体中文输出三段内容，每段3-4句，内容更具体，包含可执行建议与注意事项。\n本卦：${baseTitle}\n动爻：${topChangingText}\n变卦：${changedTitle}`
+  return `你是周易卦象解读专家，请从本卦卦象（当前运势）、动爻（变动时机）、变卦卦象（可能结果）三方面来解读用户探寻的事情。请用简体中文输出三段内容，每段3-4句，内容更具体，包含可执行建议与注意事项。\n本卦：${baseTitle}\n动爻：${topChangingText}\n变卦：${changedTitle}`
 }
 
 const parseInterpretation = (text: string) => {
@@ -291,54 +291,56 @@ function HexagramCard({ heading, entry, lines }: HexagramCardProps) {
   return (
     <section className="panel result-panel">
       <div className="panel-header">
-        <h2>{heading}</h2>
-        <span className="badge">{entry?.title ?? heading}</span>
+        <div className="header-left">
+          <div className="hexagram header-hexagram">
+            <svg className="hexagram-image" viewBox="0 0 160 120" aria-hidden="true">
+              {lines.map((line, index) => {
+                if (!line) return null
+                const y = 6 + index * 18
+                const fill = line.changing ? '#ff6b6b' : '#6aa6ff'
+                if (line.yin) {
+                  return (
+                    <g key={`svg-${index}`}>
+                      <rect x="10" y={y} width="58" height="10" rx="5" fill={fill} />
+                      <rect x="92" y={y} width="58" height="10" rx="5" fill={fill} />
+                    </g>
+                  )
+                }
+                return (
+                  <rect key={`svg-${index}`} x="10" y={y} width="140" height="10" rx="5" fill={fill} />
+                )
+              })}
+            </svg>
+            <div className="lines">
+              {lines.map((line, index) => (
+                <div
+                  key={`line-${index}`}
+                  className={`line ${line ? (line.yin ? 'yin' : 'yang') : 'empty'} ${line?.changing ? 'changing' : ''
+                    }`}
+                >
+                  {line ? (
+                    line.yin ? (
+                      <>
+                        <span />
+                        <span />
+                      </>
+                    ) : (
+                      <span className="full" />
+                    )
+                  ) : (
+                    <span className="full muted" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="header-text">
+            <h2>{heading}</h2>
+          </div>
+        </div>
       </div>
 
       <div className="result-body">
-        <div className="hexagram">
-          <svg className="hexagram-image" viewBox="0 0 160 120" aria-hidden="true">
-            {lines.map((line, index) => {
-              if (!line) return null
-              const y = 6 + index * 18
-              const fill = line.changing ? '#ff6b6b' : '#6aa6ff'
-              if (line.yin) {
-                return (
-                  <g key={`svg-${index}`}>
-                    <rect x="10" y={y} width="58" height="10" rx="5" fill={fill} />
-                    <rect x="92" y={y} width="58" height="10" rx="5" fill={fill} />
-                  </g>
-                )
-              }
-              return (
-                <rect key={`svg-${index}`} x="10" y={y} width="140" height="10" rx="5" fill={fill} />
-              )
-            })}
-          </svg>
-          <div className="lines">
-            {lines.map((line, index) => (
-              <div
-                key={`line-${index}`}
-                className={`line ${line ? (line.yin ? 'yin' : 'yang') : 'empty'} ${line?.changing ? 'changing' : ''
-                  }`}
-              >
-                {line ? (
-                  line.yin ? (
-                    <>
-                      <span />
-                      <span />
-                    </>
-                  ) : (
-                    <span className="full" />
-                  )
-                ) : (
-                  <span className="full muted" />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="text-block">
           <h3>{entry?.title}</h3>
           <div className="quote">{entry?.guaCi}</div>
@@ -353,16 +355,6 @@ function HexagramCard({ heading, entry, lines }: HexagramCardProps) {
             </ul>
           </div>
 
-          {entry?.wenyan?.length ? (
-            <div className="section">
-              <h4>文言</h4>
-              <ul>
-                {entry.wenyan.map((wy) => (
-                  <li key={wy}>{wy}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
         </div>
       </div>
     </section>
