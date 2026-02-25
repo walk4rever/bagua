@@ -166,7 +166,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0.8rem;
-  margin-top: 0.8rem;
+  margin-top: 0.4rem;
 }
 
 .hexagram-pair {
@@ -184,18 +184,13 @@
 }
 
 .header-hexagram .hexagram-image {
-  width: 120px;
-}
-
-.header-hexagram .lines {
-  gap: 0.3rem;
+  width: 80px;
 }
 
 .hexagram-image {
   width: 150px;
   height: auto;
   display: block;
-  margin-bottom: 0;
 }
 
 .lines {
@@ -314,6 +309,27 @@
   line-height: 1.6;
 }
 
+/* 动爻高亮 */
+.changing-yao {
+  background: rgba(255, 107, 107, 0.08);
+  border-color: rgba(255, 107, 107, 0.35);
+  border-left: 3px solid rgba(255, 107, 107, 0.7);
+}
+
+.changing-badge {
+  display: inline-block;
+  margin-right: 0.45rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 107, 107, 0.18);
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  color: #ff8080;
+  font-size: 0.72rem;
+  letter-spacing: 0.05rem;
+  vertical-align: middle;
+  line-height: 1.6;
+}
+
 .empty-state {
   color: rgba(248, 233, 209, 0.7);
   line-height: 1.7;
@@ -373,51 +389,13 @@
 }
 
 .yin-yang-spinner {
-  position: relative;
   width: 120px;
   height: 120px;
   border-radius: 50%;
-  background: linear-gradient(180deg, #f7f0e1 0 50%, #15110f 50% 100%);
   box-shadow: 0 0 40px rgba(246, 226, 178, 0.2);
   animation: spin 3s linear infinite;
-}
-
-.yin-yang-spinner::before,
-.yin-yang-spinner::after {
-  content: '';
-  position: absolute;
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  left: 30px;
-  background: #15110f;
-}
-
-.yin-yang-spinner::after {
-  top: 0;
-  background: #f7f0e1;
-}
-
-.yin-yang-spinner::before {
-  bottom: 0;
-}
-
-.yin-yang-spinner .dot {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  left: 52px;
-}
-
-.yin-yang-spinner .dot-dark {
-  top: 22px;
-  background: #15110f;
-}
-
-.yin-yang-spinner .dot-light {
-  bottom: 22px;
-  background: #f7f0e1;
+  display: block;
+  overflow: visible;
 }
 
 @keyframes spin {
@@ -461,82 +439,106 @@
     padding: 1rem 0.9rem 1.6rem;
     gap: 1rem;
   }
+
   .layout {
     gap: 0.85rem;
   }
+
   .hero {
     padding: 0.9rem;
   }
+
   .hero-text h1 {
     font-size: 2rem;
     letter-spacing: 0.08rem;
   }
+
   .subtitle {
     font-size: 1rem;
   }
+
   .panel {
     padding: 0.85rem;
   }
+
   .panel h2 {
     font-size: 1.2rem;
     letter-spacing: 0.06rem;
   }
+
   .header-left {
     gap: 0.75rem;
   }
+
   .header-text {
     gap: 0.3rem;
   }
+
   .text-block h3 {
     font-size: 1.15rem;
   }
+
   .quote {
     padding: 0.65rem 0.75rem;
     line-height: 1.7;
   }
+
   .section {
     margin-bottom: 0.9rem;
   }
+
   .section ul {
     gap: 0.25rem;
   }
+
   .section li {
     padding: 0.45rem 0.6rem;
   }
+
   .guidance-panel ul {
     gap: 0.35rem;
   }
+
   .guidance-panel li {
     padding: 0.5rem 0.65rem;
   }
+
   .result-body {
     margin-top: 0.8rem;
   }
+
   .hexagram-image {
     width: 120px;
   }
+
   .header-hexagram .hexagram-image {
     width: 110px;
   }
+
   .lines {
     gap: 0.3rem;
   }
+
   .line {
     height: 10px;
   }
+
   .cast-info {
     flex-direction: column;
     align-items: stretch;
     gap: 1rem;
   }
+
   .cast-info .cast-button {
     width: 100%;
   }
+
   .cast-button {
     font-size: 0.95rem;
     letter-spacing: 0.16rem;
     padding: 0.75rem 0.9rem;
   }
+
   .casting-content {
     flex-direction: column;
     gap: 0.9rem;

@@ -311,28 +311,6 @@ function HexagramCard({ heading, entry, lines }: HexagramCardProps) {
                 )
               })}
             </svg>
-            <div className="lines">
-              {lines.map((line, index) => (
-                <div
-                  key={`line-${index}`}
-                  className={`line ${line ? (line.yin ? 'yin' : 'yang') : 'empty'} ${line?.changing ? 'changing' : ''
-                    }`}
-                >
-                  {line ? (
-                    line.yin ? (
-                      <>
-                        <span />
-                        <span />
-                      </>
-                    ) : (
-                      <span className="full" />
-                    )
-                  ) : (
-                    <span className="full muted" />
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
           <div className="header-text">
             <h2>{heading}</h2>
@@ -349,12 +327,19 @@ function HexagramCard({ heading, entry, lines }: HexagramCardProps) {
           <div className="section">
             <h4>爻辞</h4>
             <ul>
-              {entry?.yaoCi.map((yao) => (
-                <li key={yao}>{yao}</li>
-              ))}
+              {entry?.yaoCi.map((yao, i) => {
+                // yaoCi[0]=初爻 对应 lines 末尾；lines 已 reverse，所以 lines[len-1-i]
+                const correspondingLine = lines[lines.length - 1 - i]
+                const isChanging = correspondingLine?.changing ?? false
+                return (
+                  <li key={yao} className={isChanging ? 'changing-yao' : ''}>
+                    {yao}
+                    {isChanging && <span className="changing-badge">动爻</span>}
+                  </li>
+                )
+              })}
             </ul>
           </div>
-
         </div>
       </div>
     </section>
@@ -531,10 +516,21 @@ function App() {
       {isCasting ? (
         <section className="panel casting-panel">
           <div className="casting-content">
-            <div className="yin-yang-spinner" aria-hidden="true">
-              <span className="dot dot-dark" />
-              <span className="dot dot-light" />
-            </div>
+            <svg className="yin-yang-spinner" viewBox="0 0 120 120" aria-hidden="true">
+              {/* 阴（暗）底圆 */}
+              <circle cx="60" cy="60" r="50" fill="#15110f" />
+              {/* 阳（亮）路径：顶→右大弧到底→逆时针下小圆左侧到圆心→顺时针上小圆右侧回顶 */}
+              <path
+                d="M 60 10 A 50 50 0 0 1 60 110 A 25 25 0 0 0 60 60 A 25 25 0 0 1 60 10 Z"
+                fill="#f7f0e1"
+              />
+              {/* 外圆边框 */}
+              <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(246,226,178,0.2)" strokeWidth="1" />
+              {/* 阳鱼内的阴眼（上小圆圆心） */}
+              <circle cx="60" cy="35" r="10" fill="#15110f" />
+              {/* 阴鱼内的阳眼（下小圆圆心） */}
+              <circle cx="60" cy="85" r="10" fill="#f7f0e1" />
+            </svg>
             <div>
               <h2>卦象生成中</h2>
               <p className="subtle">静心片刻，让卦象自然显现。</p>

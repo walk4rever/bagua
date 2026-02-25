@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Dark background with rounded corners -->
+  <rect width="64" height="64" rx="14" fill="#130b06"/>
+
+  <!-- Gold outer ring -->
+  <circle cx="32" cy="32" r="27" fill="none" stroke="#c8a76e" stroke-width="1.2" opacity="0.6"/>
+
+  <!-- ===== Yin-Yang (太极图) ===== -->
+  <!-- Center: (32,32), large R=22, small r=11, dot r=4.5 -->
+
+  <!-- Full circle base (yin / dark) -->
+  <circle cx="32" cy="32" r="22" fill="#130b06"/>
+
+  <!--
+    Yang (light) region path:
+    Start at top (32,10)
+    → Right semicircle clockwise to bottom (32,54)  [large circle right half]
+    → Left side of lower small circle CCW to (32,32) [center at (32,43), r=11]
+    → Right side of upper small circle CW to (32,10) [center at (32,21), r=11]
+  -->
+  <path
+    d="M 32 10
+       A 22 22 0 0 1 32 54
+       A 11 11 0 0 0 32 32
+       A 11 11 0 0 1 32 10
+       Z"
+    fill="#f5e9d0"
+  />
+
+  <!-- Small yin dot (dark) inside yang area: center of upper small circle = (32,21) -->
+  <circle cx="32" cy="21" r="4.5" fill="#130b06"/>
+
+  <!-- Small yang dot (light) inside yin area: center of lower small circle = (32,43) -->
+  <circle cx="32" cy="43" r="4.5" fill="#f5e9d0"/>
+
+  <!-- Thin border on the large circle -->
+  <circle cx="32" cy="32" r="22" fill="none" stroke="#c8a76e" stroke-width="0.7" opacity="0.5"/>
+
+  <!-- ===== 八卦方位刻度 (简化爻线) ===== -->
+  <!-- 8 positions at r≈27.5 from center, each with a short tick -->
+  <!-- N=0°, NE=45°, E=90°, SE=135°, S=180°, SW=225°, W=270°, NW=315° -->
+  <!-- Using polar: x=32+r·sin(θ), y=32-r·cos(θ) -->
+
+  <!-- N (乾☰) solid tick -->
+  <line x1="30.5" y1="3.5" x2="33.5" y2="3.5" stroke="#c8a76e" stroke-width="1.4" stroke-linecap="round"/>
+
+  <!-- NE (兑☱) -->
+  <line x1="49.5" y1="11.5" x2="51.5" y2="13.5" stroke="#c8a76e" stroke-width="1.2" stroke-linecap="round"/>
+
+  <!-- E (离☲) -->
+  <line x1="59.5" y1="30.5" x2="59.5" y2="33.5" stroke="#c8a76e" stroke-width="1.4" stroke-linecap="round"/>
+
+  <!-- SE (震☳) -->
+  <line x1="49.5" y1="50.5" x2="51.5" y2="52.5" stroke="#c8a76e" stroke-width="1.2" stroke-linecap="round"/>
+
+  <!-- S (坤☷) broken tick (两段) -->
+  <line x1="29.5" y1="59.5" x2="31" y2="59.5" stroke="#c8a76e" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="33" y1="59.5" x2="34.5" y2="59.5" stroke="#c8a76e" stroke-width="1.4" stroke-linecap="round"/>
+
+  <!-- SW (巽☴) -->
+  <line x1="12.5" y1="50.5" x2="14.5" y2="52.5" stroke="#c8a76e" stroke-width="1.2" stroke-linecap="round"/>
+
+  <!-- W (坎☵) -->
+  <line x1="3.5" y1="30.5" x2="3.5" y2="33.5" stroke="#c8a76e" stroke-width="1.4" stroke-linecap="round"/>
+
+  <!-- NW (艮☶) -->
+  <line x1="12.5" y1="11.5" x2="14.5" y2="13.5" stroke="#c8a76e" stroke-width="1.2" stroke-linecap="round"/>
+</svg>
