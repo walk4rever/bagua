@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: '/bagua/',
     plugins: [react()],
+    json: { stringify: true },
     define: {
       'import.meta.env.VITE_DASHSCOPE_MODEL': JSON.stringify(model),
     },

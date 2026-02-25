@@ -29,6 +29,7 @@ type HexagramResult = {
 }
 
 const entries = zhouyi as HexagramEntry[]
+const entryById = new Map(entries.map((e) => [e.id, e]))
 
 const trigramByBits: Record<number, string> = {
   0b111: 'tian',
@@ -111,7 +112,7 @@ const hexagramOrder = [
 const hexagramNumbers = [
   1, 10, 13, 25, 44, 6, 33, 12, 43, 58, 49, 17, 28, 47, 31, 45, 14, 38, 30,
   21, 50, 64, 56, 35, 34, 54, 55, 51, 32, 40, 62, 16, 9, 61, 37, 42, 57, 59,
-  53, 20, 5, 60, 63, 3, 48, 29, 39, 8, 26, 41, 21, 27, 18, 4, 52, 23, 11, 19,
+  53, 20, 5, 60, 63, 3, 48, 29, 39, 8, 26, 41, 22, 27, 18, 4, 52, 23, 11, 19,
   36, 24, 46, 7, 15, 2,
 ]
 
@@ -133,7 +134,7 @@ const deriveHexagram = (lines: Line[]) => {
   const upper = buildTrigramKey(lines.slice(3, 6))
   const key = `${upper}_${lower}`
   const number = hexagramMap[key] ?? 1
-  const entry = entries.find((item) => item.id === number) ?? null
+  const entry = entryById.get(number) ?? null
   return { number, entry }
 }
 
@@ -178,6 +179,20 @@ const parseInterpretation = (text: string) => {
   return {
     items: parts,
     plain: cleanText.slice(lastIndex).replace(/\*\*(.+?)\*\*/g, '$1').trim(),
+  }
+}
+
+const parseSseLine = (line: string): string | null => {
+  if (!line.startsWith('data:')) return null
+  const data = line.slice(5).trim()
+  if (!data || data === '[DONE]') return null
+  try {
+    const parsed = JSON.parse(data) as {
+      choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
+    }
+    return parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content ?? null
+  } catch {
+    return null
   }
 }
 
@@ -236,49 +251,19 @@ const requestInterpretation = async (
     while (index !== -1) {
       const line = buffer.slice(0, index).trim()
       buffer = buffer.slice(index + 1)
-      if (line.startsWith('data:')) {
-        const data = line.slice(5).trim()
-        if (data && data !== '[DONE]') {
-          try {
-            const parsed = JSON.parse(data) as {
-              choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
-            }
-            const delta =
-              parsed.choices?.[0]?.delta?.content ??
-              parsed.choices?.[0]?.message?.content ??
-              ''
-            if (delta) {
-              content += delta
-              onChunk?.(content)
-            }
-          } catch {
-            void 0
-          }
-        }
+      const delta = parseSseLine(line)
+      if (delta) {
+        content += delta
+        onChunk?.(content)
       }
       index = buffer.indexOf('\n')
     }
   }
-  const tail = buffer.trim()
-  if (tail.startsWith('data:')) {
-    const data = tail.slice(5).trim()
-    if (data && data !== '[DONE]') {
-      try {
-        const parsed = JSON.parse(data) as {
-          choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
-        }
-        const delta =
-          parsed.choices?.[0]?.delta?.content ??
-          parsed.choices?.[0]?.message?.content ??
-          ''
-        if (delta) {
-          content += delta
-          onChunk?.(content)
-        }
-      } catch {
-        void 0
-      }
-    }
+  // 处理循环结束后 buffer 中可能残留的最后一行
+  const delta = parseSseLine(buffer.trim())
+  if (delta) {
+    content += delta
+    onChunk?.(content)
   }
   if (!content) {
     throw new Error('interpretation_empty')
@@ -288,22 +273,106 @@ const requestInterpretation = async (
 
 const tossLine = (): Line => {
   const coins = Array.from({ length: 3 }, () => (Math.random() < 0.5 ? 2 : 3))
-  const sum = (coins[0] + coins[1] + coins[2]) as 6 | 7 | 8 | 9
-  if (sum === 6) {
-    return { value: 6, yin: true, changing: true }
-  }
-  if (sum === 7) {
-    return { value: 7, yin: false, changing: false }
-  }
-  if (sum === 8) {
-    return { value: 8, yin: true, changing: false }
-  }
-  return { value: 9, yin: false, changing: true }
+  const sum = coins[0] + coins[1] + coins[2]
+  if (sum === 6) return { value: 6, yin: true, changing: true }
+  if (sum === 7) return { value: 7, yin: false, changing: false }
+  if (sum === 8) return { value: 8, yin: true, changing: false }
+  if (sum === 9) return { value: 9, yin: false, changing: true }
+  throw new Error(`tossLine: unexpected coin sum ${sum}, expected 6–9`)
+}
+
+type HexagramCardProps = {
+  heading: string
+  entry: HexagramEntry | null
+  lines: Array<Line | null>
+}
+
+function HexagramCard({ heading, entry, lines }: HexagramCardProps) {
+  return (
+    <section className="panel result-panel">
+      <div className="panel-header">
+        <h2>{heading}</h2>
+        <span className="badge">{entry?.title ?? heading}</span>
+      </div>
+
+      <div className="result-body">
+        <div className="hexagram">
+          <svg className="hexagram-image" viewBox="0 0 160 120" aria-hidden="true">
+            {lines.map((line, index) => {
+              if (!line) return null
+              const y = 6 + index * 18
+              const fill = line.changing ? '#ff6b6b' : '#6aa6ff'
+              if (line.yin) {
+                return (
+                  <g key={`svg-${index}`}>
+                    <rect x="10" y={y} width="58" height="10" rx="5" fill={fill} />
+                    <rect x="92" y={y} width="58" height="10" rx="5" fill={fill} />
+                  </g>
+                )
+              }
+              return (
+                <rect key={`svg-${index}`} x="10" y={y} width="140" height="10" rx="5" fill={fill} />
+              )
+            })}
+          </svg>
+          <div className="lines">
+            {lines.map((line, index) => (
+              <div
+                key={`line-${index}`}
+                className={`line ${line ? (line.yin ? 'yin' : 'yang') : 'empty'} ${line?.changing ? 'changing' : ''
+                  }`}
+              >
+                {line ? (
+                  line.yin ? (
+                    <>
+                      <span />
+                      <span />
+                    </>
+                  ) : (
+                    <span className="full" />
+                  )
+                ) : (
+                  <span className="full muted" />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="text-block">
+          <h3>{entry?.title}</h3>
+          <div className="quote">{entry?.guaCi}</div>
+
+
+          <div className="section">
+            <h4>爻辞</h4>
+            <ul>
+              {entry?.yaoCi.map((yao) => (
+                <li key={yao}>{yao}</li>
+              ))}
+            </ul>
+          </div>
+
+          {entry?.wenyan?.length ? (
+            <div className="section">
+              <h4>文言</h4>
+              <ul>
+                {entry.wenyan.map((wy) => (
+                  <li key={wy}>{wy}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  )
 }
 
 function App() {
   const [result, setResult] = useState<HexagramResult | null>(null)
   const [isCasting, setIsCasting] = useState(false)
+  const [isRetrying, setIsRetrying] = useState(false)
   const timeoutRef = useRef<number | null>(null)
   const castIdRef = useRef(0)
 
@@ -399,6 +468,29 @@ function App() {
     }
   }
 
+  const handleRetry = async () => {
+    if (!result || isRetrying) return
+    setIsRetrying(true)
+    setResult((prev) => prev ? { ...prev, interpretation: '解读生成中...' } : prev)
+    try {
+      const finalText = await requestInterpretation(
+        result.lines,
+        result.entry,
+        result.changedEntry,
+        (partial) => setResult((prev) => prev ? { ...prev, interpretation: partial } : prev)
+      )
+      setResult((prev) => prev ? { ...prev, interpretation: finalText } : prev)
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? `解读生成失败：${error.message}`
+          : '解读生成失败，请稍后再试。'
+      setResult((prev) => prev ? { ...prev, interpretation: message } : prev)
+    } finally {
+      setIsRetrying(false)
+    }
+  }
+
   const changingLines = useMemo(
     () =>
       result?.lines
@@ -462,187 +554,11 @@ function App() {
       {hasResult ? (
         <>
           <main className="layout">
-            <section className="panel result-panel">
-              <div className="panel-header">
-                <h2>本卦卦象</h2>
-                <span className="badge">{result?.entry?.title ?? '本卦'}</span>
-              </div>
-
-              <div className="result-body">
-                <div className="hexagram">
-                  <svg className="hexagram-image" viewBox="0 0 160 120" aria-hidden="true">
-                    {displayLines.map((line, index) => {
-                      if (!line) return null
-                      const y = 6 + index * 18
-                      const fill = line.changing ? '#ff6b6b' : '#6aa6ff'
-                      if (line.yin) {
-                        return (
-                          <g key={`svg-${index}`}>
-                            <rect x="10" y={y} width="58" height="10" rx="5" fill={fill} />
-                            <rect x="92" y={y} width="58" height="10" rx="5" fill={fill} />
-                          </g>
-                        )
-                      }
-                      return (
-                        <rect
-                          key={`svg-${index}`}
-                          x="10"
-                          y={y}
-                          width="140"
-                          height="10"
-                          rx="5"
-                          fill={fill}
-                        />
-                      )
-                    })}
-                  </svg>
-                  <div className="lines">
-                    {displayLines.map((line, index) => (
-                      <div
-                        key={`line-${index}`}
-                        className={`line ${line ? (line.yin ? 'yin' : 'yang') : 'empty'} ${
-                          line?.changing ? 'changing' : ''
-                        }`}
-                      >
-                        {line ? (
-                          line.yin ? (
-                            <>
-                              <span />
-                              <span />
-                            </>
-                          ) : (
-                            <span className="full" />
-                          )
-                        ) : (
-                          <span className="full muted" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="text-block">
-                  <h3>{result?.entry?.title}</h3>
-                  <div className="quote">{result?.entry?.guaCi}</div>
-
-                  <div className="section">
-                    <h4>卦辞</h4>
-                    <p>{result?.entry?.guaCi}</p>
-                  </div>
-
-                  <div className="section">
-                    <h4>爻辞</h4>
-                    <ul>
-                      {result?.entry?.yaoCi.map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {result?.entry?.wenyan.length ? (
-                    <div className="section">
-                      <h4>文言</h4>
-                      <ul>
-                        {result?.entry?.wenyan.map((line) => (
-                          <li key={line}>{line}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </section>
+            <HexagramCard heading="本卦卦象" entry={result?.entry ?? null} lines={displayLines} />
           </main>
 
           {changingLines.length > 0 ? (
-            <section className="panel result-panel">
-              <div className="panel-header">
-                <h2>变卦卦象</h2>
-                <span className="badge">{result?.changedEntry?.title ?? '变卦'}</span>
-              </div>
-
-              <div className="result-body">
-                <div className="hexagram">
-                  <svg className="hexagram-image" viewBox="0 0 160 120" aria-hidden="true">
-                    {displayChangedLines.map((line, index) => {
-                      if (!line) return null
-                      const y = 6 + index * 18
-                      const fill = '#6aa6ff'
-                      if (line.yin) {
-                        return (
-                          <g key={`svg-changed-${index}`}>
-                            <rect x="10" y={y} width="58" height="10" rx="5" fill={fill} />
-                            <rect x="92" y={y} width="58" height="10" rx="5" fill={fill} />
-                          </g>
-                        )
-                      }
-                      return (
-                        <rect
-                          key={`svg-changed-${index}`}
-                          x="10"
-                          y={y}
-                          width="140"
-                          height="10"
-                          rx="5"
-                          fill={fill}
-                        />
-                      )
-                    })}
-                  </svg>
-                  <div className="lines">
-                    {displayChangedLines.map((line, index) => (
-                      <div
-                        key={`line-changed-${index}`}
-                        className={`line ${line ? (line.yin ? 'yin' : 'yang') : 'empty'}`}
-                      >
-                        {line ? (
-                          line.yin ? (
-                            <>
-                              <span />
-                              <span />
-                            </>
-                          ) : (
-                            <span className="full" />
-                          )
-                        ) : (
-                          <span className="full muted" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="text-block">
-                  <h3>{result?.changedEntry?.title ?? '变卦'}</h3>
-                  <div className="quote">{result?.changedEntry?.guaCi}</div>
-
-                  <div className="section">
-                    <h4>卦辞</h4>
-                    <p>{result?.changedEntry?.guaCi}</p>
-                  </div>
-
-                  <div className="section">
-                    <h4>爻辞</h4>
-                    <ul>
-                      {result?.changedEntry?.yaoCi?.map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {result?.changedEntry?.wenyan?.length ? (
-                    <div className="section">
-                      <h4>文言</h4>
-                      <ul>
-                        {result?.changedEntry?.wenyan?.map((line) => (
-                          <li key={line}>{line}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </section>
+            <HexagramCard heading="变卦卦象" entry={result?.changedEntry ?? null} lines={displayChangedLines} />
           ) : null}
 
           <section className="panel guidance-panel">
@@ -657,6 +573,15 @@ function App() {
             ) : (
               <p>{interpretationParts.plain || result?.interpretation}</p>
             )}
+            {result?.interpretation?.startsWith('解读生成失败') ? (
+              <button
+                className="retry-button"
+                onClick={handleRetry}
+                disabled={isRetrying}
+              >
+                {isRetrying ? '重新解读中...' : '重新解读'}
+              </button>
+            ) : null}
           </section>
         </>
       ) : null}
