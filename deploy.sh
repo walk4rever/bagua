@@ -10,4 +10,5 @@ npm run build
 
 docker build -t bagua:latest .
 docker rm -f bagua || true
-docker run -d --name bagua -p 8080:80 --env-file .env bagua:latest
+# Changed port from 8080 to 8082 to free up 8080 for air7-fun homepage
+docker run -d --name bagua -p 8082:80 --env-file .env bagua:latest
