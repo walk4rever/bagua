@@ -3,19 +3,21 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const apiKey = env.DASHSCOPE_API_KEY ?? ''
+  const apiKey = env.AI_API_KEY ?? env.DASHSCOPE_API_KEY ?? ''
   const rawBaseUrl =
+    env.AI_API_BASE_URL ??
     env.DASHSCOPE_BASE_URL ??
-    'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions'
+    'https://ark.cn-beijing.volces.com/api/coding/v3'
   const needsCompletions = !rawBaseUrl.endsWith('/chat/completions')
   const baseUrl = rawBaseUrl.replace(/\/+$/, '')
-  const model = env.DASHSCOPE_MODEL ?? 'qwen-plus'
+  const model = env.AI_MODEL ?? env.DASHSCOPE_MODEL ?? 'deepseek-v3.2'
 
   return {
     base: '/',
     plugins: [react()],
     json: { stringify: true },
     define: {
+      'import.meta.env.VITE_AI_MODEL': JSON.stringify(model),
       'import.meta.env.VITE_DASHSCOPE_MODEL': JSON.stringify(model),
     },
     server: {

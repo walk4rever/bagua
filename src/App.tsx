@@ -237,7 +237,10 @@ const requestInterpretation = async (
   onChunk?: (text: string) => void
 ) => {
   const prompt = buildInterpretationPrompt(lines, entry, changedEntry)
-  const rawModel = import.meta.env.VITE_DASHSCOPE_MODEL ?? 'qwen-plus'
+  const rawModel =
+    import.meta.env.VITE_AI_MODEL ??
+    import.meta.env.VITE_DASHSCOPE_MODEL ??
+    'deepseek-v3.2'
   const model = rawModel.startsWith('bailian/') ? rawModel.slice(8) : rawModel
   const apiUrl = import.meta.env.DEV
     ? '/api/bailian'
