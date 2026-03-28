@@ -28,6 +28,16 @@ type HexagramResult = {
   interpretation: string
 }
 
+type InterpretationSection = {
+  title: string
+  content: string
+}
+
+type ParsedInterpretation = {
+  items: InterpretationSection[]
+  plain: string
+}
+
 const entries = zhouyi as HexagramEntry[]
 const entryById = new Map(entries.map((e) => [e.id, e]))
 
@@ -145,15 +155,23 @@ const buildInterpretationPrompt = (
   entry: HexagramEntry | null,
   changedEntry: HexagramEntry | null
 ) => {
+  const describeLineState = (line: Line) => {
+    if (line.value === 6) return '老阴（阴爻变阳）'
+    if (line.value === 7) return '少阳（阳爻不变）'
+    if (line.value === 8) return '少阴（阴爻不变）'
+    return '老阳（阳爻变阴）'
+  }
+
   // 收集所有动爻，lines[0]=初爻，lines[5]=上爻
   const changingYaos = lines
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => line.changing)
-    .map(({ index }) => {
+    .map(({ line, index }) => {
       const label =
         index === 0 ? '初爻' : index === 5 ? '上爻' : `第${index + 1}爻`
       const yaoCiText = entry?.yaoCi[index] ?? ''
-      return `${label}：${yaoCiText}`
+      const changedState = line.yin ? '变为阳爻' : '变为阴爻'
+      return `${label}：${describeLineState(line)}，${changedState}。爻辞：${yaoCiText}`
     })
 
   const changingYaoText = changingYaos.length
@@ -162,34 +180,48 @@ const buildInterpretationPrompt = (
 
   const baseTitle = entry?.title ?? '本卦'
   const changedTitle = changedEntry?.title ?? '变卦'
+  const baseYaoText = entry?.yaoCi?.length
+    ? entry.yaoCi.map((text, index) => {
+        const label =
+          index === 0 ? '初爻' : index === 5 ? '上爻' : `第${index + 1}爻`
+        return `${label}：${text}`
+      }).join('\n')
+    : '暂无爻辞'
+  const changedYaoText = changedEntry?.yaoCi?.length
+    ? changedEntry.yaoCi.map((text, index) => {
+        const label =
+          index === 0 ? '初爻' : index === 5 ? '上爻' : `第${index + 1}爻`
+        return `${label}：${text}`
+      }).join('\n')
+    : '暂无爻辞'
 
   return `
 【本卦】${baseTitle}
 卦辞：${entry?.guaCi ?? ''}
 彖辞：${entry?.tuan?.[0] ?? ''}
+爻辞：
+${baseYaoText}
 
 【动爻】（共 ${changingYaos.length} 爻变动）
 ${changingYaoText}
 
 【变卦】${changedTitle}
 卦辞：${changedEntry?.guaCi ?? ''}
+爻辞：
+${changedYaoText}
 
-请严格按以下 Markdown 格式输出，不要添加额外标题层级：
-
-**本卦解读**
-（3-5句：先通俗讲解本卦的整体象意，再结合卦辞解释其含义，最后说明当前形势的核心建议）
-
-**动爻启示**
-（每条动爻先引用爻辞原文，再用2-3句解释含义与行动指引；若无动爻则解释"静卦"的意义并给出守势建议）
-
-**变卦指引**
-（3-5句：解读变卦的整体走向，结合卦辞说明事情最终结果，给出一到两条具体可操作的建议）
+请只输出一个 JSON 对象，不要输出 Markdown，不要输出代码块，不要添加任何额外说明。JSON 结构必须严格如下：
+{
+  "baseInterpretation": "字符串，3-5句：先通俗讲解本卦的整体象意，再结合卦辞解释其含义，最后说明当前形势的核心建议",
+  "changingLinesGuidance": "字符串：逐条说明动爻。每条动爻先引用爻辞原文，再用2-3句解释含义与行动指引；若无动爻则解释静卦意义并给出守势建议",
+  "changedInterpretation": "字符串，3-5句：解读变卦的整体走向，结合卦辞说明事情最终结果，给出一到两条具体可操作的建议"
+}
 `.trim()
 }
 
-const parseInterpretation = (text: string) => {
+const parseMarkdownInterpretation = (text: string): ParsedInterpretation => {
   const cleanText = text.trim()
-  const parts: Array<{ title: string; content: string }> = []
+  const parts: InterpretationSection[] = []
   const regex = /\*\*(.+?)\*\*\s*/g
   let lastIndex = 0
   let match: RegExpExecArray | null = regex.exec(cleanText)
@@ -214,6 +246,55 @@ const parseInterpretation = (text: string) => {
     items: parts,
     plain: cleanText.slice(lastIndex).replace(/\*\*(.+?)\*\*/g, '$1').trim(),
   }
+}
+
+const extractJsonBlock = (text: string) => {
+  const trimmed = text.trim()
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim()
+  }
+  const start = trimmed.indexOf('{')
+  const end = trimmed.lastIndexOf('}')
+  if (start === -1 || end === -1 || end <= start) {
+    return null
+  }
+  return trimmed.slice(start, end + 1)
+}
+
+const parseInterpretation = (text: string): ParsedInterpretation => {
+  const jsonCandidate = extractJsonBlock(text)
+  if (jsonCandidate) {
+    try {
+      const parsed = JSON.parse(jsonCandidate) as {
+        baseInterpretation?: string
+        changingLinesGuidance?: string
+        changedInterpretation?: string
+      }
+      const items: InterpretationSection[] = [
+        {
+          title: '本卦解读',
+          content: parsed.baseInterpretation?.trim() ?? '',
+        },
+        {
+          title: '动爻启示',
+          content: parsed.changingLinesGuidance?.trim() ?? '',
+        },
+        {
+          title: '变卦指引',
+          content: parsed.changedInterpretation?.trim() ?? '',
+        },
+      ].filter((item) => item.content)
+
+      if (items.length) {
+        return { items, plain: '' }
+      }
+    } catch {
+      // Fall back to markdown/plain-text parsing.
+    }
+  }
+
+  return parseMarkdownInterpretation(text)
 }
 
 const parseSseLine = (line: string): string | null => {
@@ -287,117 +368,134 @@ const requestInterpretation = async (
   onChunk?: (text: string) => void
 ) => {
   const prompt = buildInterpretationPrompt(lines, entry, changedEntry)
-  const rawModel =
-    import.meta.env.VITE_AI_MODEL ??
-    import.meta.env.VITE_DASHSCOPE_MODEL ??
-    'deepseek-v3.2'
-  const model = rawModel.startsWith('bailian/') ? rawModel.slice(8) : rawModel
+  const model = import.meta.env.VITE_AI_MODEL ?? 'default-model'
   const apiUrl = import.meta.env.DEV
-    ? '/api/bailian'
-    : `${import.meta.env.BASE_URL}api/bailian`
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content:
-            '你是精通周易的解读师，擅长将古典卦象转化为现代人易懂的建议。请先解释卦辞、爻辞等古典经文的含义，再结合现实情境展开解读，让不懂易经的用户也能充分理解。语气温和、深入浅出，可适当引用原文并加以说明。输出语言：简体中文。',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      temperature: INTERPRETATION_TEMPERATURE,
-      max_tokens: 1024,
-      stream: true,
-    }),
-  })
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`${response.status} ${errorText}`.trim())
+    ? '/api/llm'
+    : `${import.meta.env.BASE_URL}api/llm`
+  const basePayload = {
+    model,
+    messages: [
+      {
+        role: 'system' as const,
+        content:
+          '你是精通周易的解读师，擅长将古典卦象转化为现代人易懂的建议。请先解释卦辞、爻辞等古典经文的含义，再结合现实情境展开解读，让不懂易经的用户也能充分理解。语气温和、深入浅出，可适当引用原文并加以说明。若用户没有明确说明所问事项，请默认从学业、工作、事业、财富、爱情、家庭、亲戚、朋友等维度中选择与卦象最相关的几个角度进行分析，明确指出哪些维度更值得关注，并说明判断依据来自卦象、卦辞与动爻变化。输出语言：简体中文。',
+      },
+      {
+        role: 'user' as const,
+        content: prompt,
+      },
+    ],
+    temperature: INTERPRETATION_TEMPERATURE,
+    max_tokens: 768,
   }
-  const contentType = response.headers.get('content-type') ?? ''
-  if (contentType.includes('application/json')) {
-    const payload = (await response.json()) as unknown
-    const content = extractJsonInterpretation(payload)
-    if (!content) {
-      throw new Error('interpretation_empty')
+
+  const executeRequest = async (stream: boolean) => {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...basePayload,
+        stream,
+      }),
+    })
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`${response.status} ${errorText}`.trim())
     }
-    onChunk?.(content)
-    return content
-  }
-  const reader = response.body?.getReader()
-  if (!reader) {
-    throw new Error('stream_unavailable')
-  }
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-  let content = ''
-  let currentEvent = ''
-  let doneSeen = false
-  while (true) {
-    const { value, done } = await reader.read()
-    if (value) {
-      buffer += decoder.decode(value, { stream: !done })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-      for (const rawLine of lines) {
-        const line = rawLine.trim()
-        if (!line) {
-          currentEvent = ''
-          continue
-        }
-        if (line.startsWith('event:')) {
-          currentEvent = line.slice(6).trim()
-          continue
-        }
-        if (line.startsWith('data:')) {
-          if (!currentEvent) {
-            const delta = parseSseLine(line)
-            if (delta) {
-              content += delta
-              onChunk?.(content)
-            }
+
+    const contentType = response.headers.get('content-type') ?? ''
+    if (contentType.includes('application/json')) {
+      const payload = (await response.json()) as unknown
+      const content = extractJsonInterpretation(payload)
+      if (!content) {
+        throw new Error('interpretation_empty')
+      }
+      onChunk?.(content)
+      return content
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('stream_unavailable')
+    }
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let content = ''
+    let currentEvent = ''
+    let doneSeen = false
+    while (true) {
+      const { value, done } = await reader.read()
+      if (value) {
+        buffer += decoder.decode(value, { stream: !done })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const rawLine of lines) {
+          const line = rawLine.trim()
+          if (!line) {
+            currentEvent = ''
             continue
           }
-          const parsedEvent = parseStreamEvent(
-            currentEvent,
-            line.slice(5).trim()
-          )
-          if (!parsedEvent) continue
-          if (parsedEvent.type === 'delta') {
-            content += parsedEvent.content
-            onChunk?.(content)
-          } else if (parsedEvent.type === 'done') {
-            doneSeen = true
-          } else if (parsedEvent.type === 'error') {
-            throw new Error(parsedEvent.message)
+          if (line.startsWith('event:')) {
+            currentEvent = line.slice(6).trim()
+            continue
+          }
+          if (line.startsWith('data:')) {
+            if (!currentEvent) {
+              const delta = parseSseLine(line)
+              if (delta) {
+                content += delta
+                onChunk?.(content)
+              }
+              continue
+            }
+            const parsedEvent = parseStreamEvent(
+              currentEvent,
+              line.slice(5).trim()
+            )
+            if (!parsedEvent) continue
+            if (parsedEvent.type === 'delta') {
+              content += parsedEvent.content
+              onChunk?.(content)
+            } else if (parsedEvent.type === 'done') {
+              doneSeen = true
+            } else if (parsedEvent.type === 'error') {
+              throw new Error(parsedEvent.message)
+            }
           }
         }
       }
+      if (done || doneSeen) {
+        break
+      }
     }
-    if (done || doneSeen) {
-      break
+
+    if (buffer.trim()) {
+      const line = buffer.trim()
+      const delta = parseSseLine(line)
+      if (delta) {
+        content += delta
+        onChunk?.(content)
+      }
     }
-  }
-  if (buffer.trim()) {
-    const line = buffer.trim()
-    const delta = parseSseLine(line)
-    if (delta) {
-      content += delta
-      onChunk?.(content)
+    if (!content && !doneSeen) {
+      throw new Error('interpretation_empty')
     }
+    return content
   }
-  if (!content && !doneSeen) {
-    throw new Error('interpretation_empty')
+
+  try {
+    return await executeRequest(true)
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      !/^(4\d\d|5\d\d)\s/.test(error.message)
+    ) {
+      return executeRequest(false)
+    }
+    throw error
   }
-  return content
 }
 
 const tossLine = (): Line => {

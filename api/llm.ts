@@ -14,22 +14,39 @@ const jsonResponse = (body: Record<string, string>, status: number) =>
   });
 
 const encoder = new TextEncoder();
+const isJsonResponse = (contentType: string | null) =>
+  (contentType ?? '').toLowerCase().includes('application/json');
+
+const extractContent = (payload: unknown): string | null => {
+  if (!payload || typeof payload !== 'object') return null;
+  const parsed = payload as {
+    choices?: Array<{
+      delta?: { content?: string };
+      message?: { content?: string };
+    }>;
+  };
+  return (
+    parsed.choices?.[0]?.delta?.content ??
+    parsed.choices?.[0]?.message?.content ??
+    null
+  );
+};
 
 export default async function handler(request: Request) {
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'Method Not Allowed' }, 405);
   }
 
-  const apiKey = process.env.AI_API_KEY || process.env.DASHSCOPE_API_KEY;
-  const rawBaseUrl =
-    process.env.AI_API_BASE_URL ||
-    process.env.DASHSCOPE_BASE_URL ||
-    'https://ark.cn-beijing.volces.com/api/coding/v3';
-  const baseUrl = normalizeChatCompletionsUrl(rawBaseUrl);
+  const apiKey = process.env.AI_API_KEY;
+  const rawBaseUrl = process.env.AI_API_BASE_URL;
 
   if (!apiKey) {
     return jsonResponse({ error: 'AI_API_KEY is not configured' }, 500);
   }
+  if (!rawBaseUrl) {
+    return jsonResponse({ error: 'AI_API_BASE_URL is not configured' }, 500);
+  }
+  const baseUrl = normalizeChatCompletionsUrl(rawBaseUrl);
 
   let payload: unknown;
   try {
@@ -37,6 +54,12 @@ export default async function handler(request: Request) {
   } catch {
     return jsonResponse({ error: 'Invalid JSON body' }, 400);
   }
+
+  const shouldStream =
+    typeof payload === 'object' &&
+    payload !== null &&
+    'stream' in payload &&
+    (payload as { stream?: unknown }).stream !== false;
 
   try {
     const response = await fetch(baseUrl, {
@@ -56,6 +79,17 @@ export default async function handler(request: Request) {
         headers: {
           'Content-Type':
             response.headers.get('content-type') ?? 'text/plain; charset=utf-8',
+        },
+      });
+    }
+
+    if (!shouldStream || isJsonResponse(response.headers.get('content-type'))) {
+      return new Response(response.body, {
+        status: response.status,
+        headers: {
+          'Content-Type':
+            response.headers.get('content-type') ?? 'application/json; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
         },
       });
     }
@@ -95,9 +129,12 @@ export default async function handler(request: Request) {
 
               try {
                 const parsed = JSON.parse(rawPayload) as {
-                  choices?: Array<{ delta?: { content?: string } }>
+                  choices?: Array<{
+                    delta?: { content?: string }
+                    message?: { content?: string }
+                  }>
                 };
-                const delta = parsed.choices?.[0]?.delta?.content;
+                const delta = extractContent(parsed);
                 if (!delta) continue;
                 controller.enqueue(
                   encoder.encode(`event: delta\ndata: ${JSON.stringify(delta)}\n\n`)
@@ -109,6 +146,28 @@ export default async function handler(request: Request) {
 
             if (streamCompleted) {
               break;
+            }
+          }
+
+          const trailingPayload = sseBuffer.trim();
+          if (trailingPayload.startsWith('data:')) {
+            const rawPayload = trailingPayload.slice(5).trim();
+            if (rawPayload === '[DONE]') {
+              streamCompleted = true;
+            } else if (rawPayload) {
+              try {
+                const parsed = JSON.parse(rawPayload);
+                const delta = extractContent(parsed);
+                if (delta) {
+                  controller.enqueue(
+                    encoder.encode(
+                      `event: delta\ndata: ${JSON.stringify(delta)}\n\n`
+                    )
+                  );
+                }
+              } catch {
+                // Ignore incomplete trailing chunk payloads.
+              }
             }
           }
 
