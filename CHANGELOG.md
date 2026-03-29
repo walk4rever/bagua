@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.1 - 2026-03-29
+- 简化 AI 模型配置：前端不再依赖 `NEXT_PUBLIC_AI_MODEL`，统一由服务端 API 路由读取 `AI_MODEL`
+- `/api/llm` 在请求未显式传入模型时自动回退到 `AI_MODEL`，减少重复配置与前端暴露
+- README 与本地环境变量示例同步更新，仅保留服务端所需的 AI 配置
+
 ## v0.5.6 - 2026-03-28
 - 修复流式解读时用户先看到原始 JSON 再格式化的问题：JSON 在完整可解析前保持显示"解读生成中..."
 - 将 Vercel API 函数切换至 Edge Runtime，解决 Hobby 计划下 Serverless 函数 10 秒硬限制导致的 504 超时问题（Edge Runtime 上限 30 秒）

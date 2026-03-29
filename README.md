@@ -32,7 +32,6 @@ npm run dev
 AI_API_KEY=your-api-key
 AI_API_BASE_URL=https://your-provider.example.com/v1
 AI_MODEL=your-model-name
-NEXT_PUBLIC_AI_MODEL=your-model-name
 ```
 
 ## 构建与部署

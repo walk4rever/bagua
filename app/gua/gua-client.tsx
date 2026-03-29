@@ -386,10 +386,8 @@ const requestInterpretation = async (
   onChunk?: (text: string) => void
 ) => {
   const prompt = buildInterpretationPrompt(lines, entry, changedEntry)
-  const model = process.env.NEXT_PUBLIC_AI_MODEL ?? 'default-model'
   const apiUrl = '/api/llm'
   const basePayload = {
-    model,
     messages: [
       {
         role: 'system' as const,

@@ -93,13 +93,10 @@ async function requestXun(
   input: string,
   onChunk?: (text: string) => void
 ): Promise<string> {
-  const model = process.env.NEXT_PUBLIC_AI_MODEL ?? 'default-model'
-
   const response = await fetch('/api/llm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: input },

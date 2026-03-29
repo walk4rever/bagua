@@ -35,12 +35,16 @@ const extractContent = (payload: unknown): string | null => {
 export async function POST(request: Request) {
   const apiKey = process.env.AI_API_KEY
   const rawBaseUrl = process.env.AI_API_BASE_URL
+  const defaultModel = process.env.AI_MODEL
 
   if (!apiKey) {
     return jsonResponse({ error: 'AI_API_KEY is not configured' }, 500)
   }
   if (!rawBaseUrl) {
     return jsonResponse({ error: 'AI_API_BASE_URL is not configured' }, 500)
+  }
+  if (!defaultModel) {
+    return jsonResponse({ error: 'AI_MODEL is not configured' }, 500)
   }
   const baseUrl = normalizeChatCompletionsUrl(rawBaseUrl)
 
@@ -51,11 +55,24 @@ export async function POST(request: Request) {
     return jsonResponse({ error: 'Invalid JSON body' }, 400)
   }
 
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return jsonResponse({ error: 'Invalid request payload' }, 400)
+  }
+
+  const requestedModel = (payload as { model?: unknown }).model
+  const resolvedModel =
+    typeof requestedModel === 'string' && requestedModel.trim()
+      ? requestedModel.trim()
+      : defaultModel
+
+  const upstreamPayload = {
+    ...payload,
+    model: resolvedModel,
+  }
+
   const shouldStream =
-    typeof payload === 'object' &&
-    payload !== null &&
-    'stream' in payload &&
-    (payload as { stream?: unknown }).stream !== false
+    'stream' in upstreamPayload &&
+    (upstreamPayload as { stream?: unknown }).stream !== false
 
   try {
     const response = await fetch(baseUrl, {
@@ -64,7 +81,7 @@ export async function POST(request: Request) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(upstreamPayload),
       signal: AbortSignal.timeout(25000),
     })
 
