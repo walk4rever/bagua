@@ -1,4 +1,5 @@
 export const runtime = 'edge'
+export const maxDuration = 30
 
 const normalizeChatCompletionsUrl = (rawBaseUrl: string) => {
   const trimmed = rawBaseUrl.trim().replace(/\/+$/, '')
